@@ -1,0 +1,38 @@
+import React, {useEffect, useState} from 'react'
+import { Search, Play, Plus, Bookmark, Film, X, Clapperboard } from 'lucide-react'
+
+const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const IMG = 'https://image.tmdb.org/t/p/w500'
+export default function App(){
+  const [movies,setMovies]=useState([])
+  const [query,setQuery]=useState('')
+  const [genres,setGenres]=useState([])
+  const [genre,setGenre]=useState('')
+  const [active,setActive]=useState(null)
+  const [token,setToken]=useState(localStorage.getItem('mp_token')||'')
+  const [watchlist,setWatchlist]=useState([])
+  const [auth,setAuth]=useState(false)
+  const [email,setEmail]=useState('')
+  const [password,setPassword]=useState('')
+  const [notice,setNotice]=useState('')
+  const [busy,setBusy]=useState(false)
+  async function load(path){const r=await fetch(API+path); if(!r.ok) throw new Error('Could not load movie data'); return r.json()}
+  useEffect(()=>{load('/api/movies/trending').then(d=>setMovies(d.results||[])).catch(e=>setNotice(e.message));load('/api/movies/genres').then(d=>setGenres(d.genres||[])).catch(()=>{})},[])
+  useEffect(()=>{if(token) fetch(API+'/api/watchlist',{headers:{Authorization:'Bearer '+token}}).then(r=>r.ok?r.json():[]).then(setWatchlist)},[token])
+  async function search(e){e?.preventDefault();try{const d=await load('/api/movies/search?q='+encodeURIComponent(query));setMovies(d.results||[])}catch(e){setNotice(e.message)}}
+  async function filterGenre(id){setGenre(String(id));try{const d=await load('/api/movies/search?q='+encodeURIComponent(genres.find(g=>g.id===id)?.name||''));setMovies(d.results||[])}catch(e){setNotice(e.message)}}
+  async function details(m){try{setActive(await load('/api/movies/'+m.id))}catch(e){setNotice(e.message)}}
+  async function authSubmit(e){e.preventDefault();setBusy(true);try{const r=await fetch(API+'/api/auth/'+(auth?'login':'register'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Authentication failed');localStorage.setItem('mp_token',d.access_token);setToken(d.access_token);setNotice('Welcome to MADHURPLAY');setAuth(false)}catch(e){setNotice(e.message)}finally{setBusy(false)}}
+  async function add(m){if(!token){setNotice('Sign in to save movies to your list');return}const r=await fetch(API+'/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({movie_id:m.id,title:m.title,poster_path:m.poster_path})});if(r.ok){setWatchlist(await (await fetch(API+'/api/watchlist',{headers:{Authorization:'Bearer '+token}})).json());setNotice('Added to My List')}}
+  const hero=movies[0]
+  return <div className="app"><header><a className="brand" href="#"><span className="brand-icon"><Play size={17} fill="currentColor"/></span>MADHUR<span>PLAY</span></a><nav><a className="selected" href="#">Home</a><a href="#movies">Movies</a><a href="#genres">Genres</a><a href="#mylist">My List</a></nav><form className="search" onSubmit={search}><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search movies..."/></form><button className="outline" onClick={()=>setAuth(!auth)}>{token?'Account':'Sign in'}</button></header>
+  {notice&&<div className="notice" onClick={()=>setNotice('')}>{notice} <X size={14}/></div>}
+  {hero&&<section className="hero" style={{backgroundImage:`linear-gradient(90deg,#09090df5 0%,#09090d99 55%,#09090d22),linear-gradient(0deg,#09090d,transparent 60%),url(${IMG.replace('w500','original')+hero.backdrop_path})`}}><div className="hero-copy"><p className="eyebrow">YOUR NEXT GREAT STORY STARTS HERE</p><h1>{hero.title}</h1><p>{hero.overview}</p><div className="actions"><button className="primary" onClick={()=>details(hero)}><Play size={17} fill="currentColor"/> Explore title</button><button className="outline" onClick={()=>add(hero)}><Plus size={17}/> My List</button></div><small>★ {hero.vote_average?.toFixed(1)||'—'} &nbsp; • &nbsp; {hero.release_date?.slice(0,4)||'New release'}</small></div></section>}
+  <main><section id="genres"><div className="section-head"><div><p className="eyebrow">FIND YOUR MOOD</p><h2>Browse by Genre</h2></div></div><div className="chips"><button className={!genre?'chip active':'chip'} onClick={()=>{setGenre('');load('/api/movies/trending').then(d=>setMovies(d.results||[]))}}>All</button>{genres.slice(0,12).map(g=><button key={g.id} className={genre===String(g.id)?'chip active':'chip'} onClick={()=>filterGenre(g.id)}>{g.name}</button>)}</div></section>
+  <section id="movies"><div className="section-head"><div><p className="eyebrow">CURATED FOR YOU</p><h2>Trending Now</h2></div><span className="muted">{movies.length} titles</span></div><div className="grid">{movies.map(m=><article className="movie" key={m.id} onClick={()=>details(m)}><div className="poster">{m.poster_path?<img src={IMG+m.poster_path} alt={m.title}/>:<div className="placeholder"><Film/></div>}<button className="add" title="Add to My List" onClick={e=>{e.stopPropagation();add(m)}}><Plus size={18}/></button></div><h3>{m.title}</h3><p>{m.release_date?.slice(0,4)||'—'} <span>★ {m.vote_average?.toFixed(1)||'—'}</span></p></article>)}</div></section>
+  <section id="mylist"><div className="section-head"><div><p className="eyebrow">SAVED FOR LATER</p><h2>My List</h2></div></div>{watchlist.length?<div className="grid">{watchlist.map(m=><article className="movie" key={m.id}><div className="poster"><img src={IMG+m.poster_path} alt={m.title}/></div><h3>{m.title}</h3></article>)}</div>:<p className="muted">Sign in and save titles to build your personal watchlist.</p>}</section></main>
+  <footer><a className="brand" href="#">MADHUR<span>PLAY</span></a><p>Discover stories worth staying in for.</p><small>Movie metadata provided by TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</small></footer>
+  {active&&<div className="modal" onClick={()=>setActive(null)}><div className="detail" onClick={e=>e.stopPropagation()}><button className="close" onClick={()=>setActive(null)}><X/></button>{active.backdrop_path&&<img className="detail-back" src={'https://image.tmdb.org/t/p/w1280'+active.backdrop_path}/>}<div className="detail-copy"><p className="eyebrow">MOVIE DETAILS</p><h2>{active.title}</h2><p>{active.overview}</p><p className="muted">{active.release_date} · ★ {active.vote_average?.toFixed(1)} · {active.runtime?active.runtime+' min':''}</p><button className="primary" onClick={()=>{const v=active.videos?.results?.find(x=>x.site==='YouTube'&&x.type==='Trailer');if(v)window.open('https://www.youtube.com/watch?v='+v.key,'_blank');else setNotice('No trailer is currently listed')}}><Play size={16}/> Watch Trailer</button><button className="outline" onClick={()=>add(active)}><Bookmark size={16}/> Add to My List</button></div></div></div>}
+  {auth&&<div className="modal" onClick={()=>setAuth(false)}><form className="auth" onSubmit={authSubmit} onClick={e=>e.stopPropagation()}><button type="button" className="close" onClick={()=>setAuth(false)}><X/></button><Clapperboard size={30}/><h2>{token?'Welcome back':'Create your account'}</h2><input type="email" required placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)}/><input type="password" minLength="8" required placeholder="Password (8+ characters)" value={password} onChange={e=>setPassword(e.target.value)}/><button className="primary" disabled={busy}>{busy?'Please wait...':token?'Sign in':'Create account'}</button><p className="muted" onClick={()=>setAuth(!auth)}>Switch sign-in / registration</p></form></div>}
+  </div>
+}
